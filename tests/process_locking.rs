@@ -196,9 +196,7 @@ fn process_helper() -> Result<()> {
             fs::write(&acquired, b"started")?;
             for _ in 0..iterations {
                 let guard = manager.acquire_blocking(request(&lock_path, "counter increment"))?;
-                let current = fs::read_to_string(&counter_path)?
-                    .trim()
-                    .parse::<usize>()?;
+                let current = fs::read_to_string(&counter_path)?.trim().parse::<usize>()?;
                 thread::yield_now();
                 fs::write(&counter_path, (current + 1).to_string())?;
                 drop(guard);
