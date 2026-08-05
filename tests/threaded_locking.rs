@@ -62,11 +62,29 @@ fn cold_key_progresses_while_many_threads_wait_on_one_hot_key() -> Result<()> {
     drop(cold_guard);
     drop(hot_owner);
 
-    for waiter in &mut hot_waiters {
-        let guard = waiter
-            .wait_timeout(DEADLINE)?
-            .context("a queued hot-key waiter did not make eventual progress")?;
-        drop(guard);
+    // The operating system does not promise FIFO waiter ordering. Poll every
+    // pending completion object and release whichever guard the kernel granted
+    // next, rather than waiting for vector order to match kernel handoff order.
+    let handoff_deadline = Instant::now() + DEADLINE;
+    while !hot_waiters.is_empty() {
+        let mut index = 0;
+        let mut made_progress = false;
+        while index < hot_waiters.len() {
+            match hot_waiters[index].wait_timeout(SHORT_WAIT)? {
+                Some(guard) => {
+                    drop(guard);
+                    hot_waiters.swap_remove(index);
+                    made_progress = true;
+                }
+                None => index += 1,
+            }
+        }
+        if !made_progress && Instant::now() >= handoff_deadline {
+            return Err(anyhow!(
+                "{} queued hot-key waiters did not make eventual progress",
+                hot_waiters.len()
+            ));
+        }
     }
     assert!(
         wait_until(|| manager.active_waiters() == 0, DEADLINE),
