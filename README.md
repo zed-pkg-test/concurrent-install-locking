@@ -10,10 +10,11 @@ Independent **chaos/fault-injection and cross-platform locking** harness in `zed
 
 ## Upstream repositories
 
+- `zed-pkg/zed-lock`
 - `zed-pkg/zed-cli`
 - `zed-pkg/zed-interfaces`
 
-The Rust acceptance harness resolves the production `zed-lock` package directly from the `zed-pkg/zed-cli` `main` branch. This keeps the test organization independent from the production repository while ensuring its daily matrix exercises the code users would currently receive.
+The Rust acceptance harness resolves the production `zed-lock` package directly from the standalone `zed-pkg/zed-lock` repository at immutable commit `0fc100afc3cd60b5ce091b4207f910bf08f2cfb7`. This keeps the test organization independent from both the production CLI workspace and mutable branches while certifying the exact standalone source.
 
 ## Acceptance objectives
 
@@ -47,7 +48,7 @@ ZED_LOCK_E2E_STRESS=1 cargo test --release --all-targets -- --nocapture
 
 ## Dependency paths
 
-This repository also tests the upstream through independent installation paths:
+This repository also tests the CLI upstream through independent installation paths:
 
 1. `./scripts/bootstrap-upstream.sh git-submodule`
 2. `./scripts/bootstrap-upstream.sh zed`

@@ -9,4 +9,4 @@ description = "Independent cross-platform locking acceptance tests for zed-pkg"
 [dev-dependencies]
 anyhow = "1"
 tempfile = "3"
-zed-lock = { git = "https://github.com/zed-pkg/zed-cli.git", branch = "main", package = "zed-lock" }
+zed-lock = { git = "https://github.com/zed-pkg/zed-lock.git", rev = "0fc100afc3cd60b5ce091b4207f910bf08f2cfb7" }
