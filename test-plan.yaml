@@ -6,45 +6,68 @@ repository: concurrent-install-locking
 kind: chaos
 readiness: ready
 objectives:
-- Verify five concurrent installs, per-artifact locks, killed-owner recovery, and corruption resistance across the supported
-  happy-path states and canonical fixtures.
-- Verify five concurrent installs, per-artifact locks, killed-owner recovery, and corruption resistance under retries,
-  interruption, concurrency, offline operation, or partial failure.
-- Verify five concurrent installs, per-artifact locks, killed-owner recovery, and corruption resistance preserves authorization,
-  idempotency, integrity, observability, and actionable failure classification.
+- Verify concurrent recursive and store operations serialize on one logical lock identity while unrelated identities retain useful concurrency.
+- Verify evented waiter threads issue one blocking native acquisition request, survive repeated timeout observation, and never leak a late guard after cancellation.
+- Verify killed-owner recovery, panic or process exit behavior, and stable lock-file rendezvous semantics.
+- Verify deterministic lock-class and path ordering, canonical identity deduplication, and Unix symlink alias contention.
+- Verify thread and process contention preserves protected counters without lost updates or overlapping critical sections on Linux, macOS, and Windows.
+- Verify larger scheduled contention soaks remain bounded, observable, network-free on the local path, and actionable when they fail.
 always_on_checks:
 - Validate test-plan and dependency metadata.
 - Validate generated fixture and workflow syntax.
+- Run the normal Rust locking matrix on Linux, macOS, and Windows.
 - Classify missing upstreams or credentials separately from product regressions.
 schedule_utc: 17 5 * * *
 expensive: true
 required_infrastructure:
 - multi-process runner
+- Linux runner
+- macOS runner
+- Windows runner
 cases:
 - id: TC-001
-  title: Verify five concurrent installs, per-artifact locks, killed-owner recovery, and corruption resistance across
-    the supported happy-path states and canonical fixtures.
-  tier: scheduled-live
-  status: planned
+  title: Hot-key waiters do not head-of-line block an unrelated cold lock identity.
+  tier: pull-request-matrix
+  status: automated
   evidence:
-  - junit
-  - readiness JSON
-  - workflow artifacts
+  - cargo test output
+  - workflow checks
 - id: TC-002
-  title: Verify five concurrent installs, per-artifact locks, killed-owner recovery, and corruption resistance under
-    retries, interruption, concurrency, offline operation, or partial failure.
-  tier: scheduled-live
-  status: planned
+  title: Repeated timeout observation and cancellation retain one native wait request and release any late guard.
+  tier: pull-request-matrix
+  status: automated
   evidence:
-  - junit
-  - readiness JSON
-  - workflow artifacts
+  - structured lock events
+  - cargo test output
+  - workflow checks
 - id: TC-003
-  title: Verify five concurrent installs, per-artifact locks, killed-owner recovery, and corruption resistance preserves
-    authorization, idempotency, integrity, observability, and actionable failure classification.
-  tier: scheduled-live
-  status: planned
+  title: Owner termination releases the descriptor lock while preserving the stable rendezvous file.
+  tier: pull-request-matrix
+  status: automated
   evidence:
-  - junit
-  - readiness JSON
-  - workflow artifacts
+  - child-process exit status
+  - acquisition markers
+  - workflow checks
+- id: TC-004
+  title: Canonical lock sets acquire in deterministic class and path order and reject duplicate identities.
+  tier: pull-request-matrix
+  status: automated
+  evidence:
+  - structured lock events
+  - cargo test output
+- id: TC-005
+  title: Thread and process contention preserves protected counters and exclusive critical sections across supported operating systems.
+  tier: pull-request-matrix
+  status: automated
+  evidence:
+  - protected counter totals
+  - overlap sentinel absence
+  - Linux macOS Windows workflow checks
+- id: TC-006
+  title: Expanded release-mode thread and process contention completes within the waiter budget and test deadline.
+  tier: scheduled-soak
+  status: automated
+  evidence:
+  - release-mode cargo test output
+  - scheduled workflow result
+  - failure classification
