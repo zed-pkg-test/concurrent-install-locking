@@ -1,7 +1,10 @@
 schema_version: 1
 readiness: ready
 primary_upstream: zed-pkg/zed-cli
+locking_upstream: zed-pkg/zed-lock
+locking_revision: 0fc100afc3cd60b5ce091b4207f910bf08f2cfb7
 upstream_repositories:
+- zed-pkg/zed-lock
 - zed-pkg/zed-cli
 - zed-pkg/zed-interfaces
 planned_upstream_repositories: []
