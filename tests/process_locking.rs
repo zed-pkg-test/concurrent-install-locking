@@ -168,18 +168,18 @@ fn process_helper() -> Result<()> {
     match role.as_str() {
         "hold" | "critical" => {
             let guard = manager.acquire_blocking(request(&lock_path, format!("helper {role}")))?;
-            if let Some(critical_dir) = std::env::var_os(CRITICAL_DIR).map(PathBuf::from) {
-                if let Err(error) = fs::create_dir(&critical_dir) {
-                    if let Some(overlap_marker) =
-                        std::env::var_os(OVERLAP_MARKER).map(PathBuf::from)
-                    {
-                        let _ = fs::write(
-                            overlap_marker,
-                            format!("critical section overlap: {error}\n"),
-                        );
-                    }
-                    return Err(error).context("entering lock-protected critical directory");
+            if let Some(critical_dir) = std::env::var_os(CRITICAL_DIR).map(PathBuf::from)
+                && let Err(error) = fs::create_dir(&critical_dir)
+            {
+                if let Some(overlap_marker) =
+                    std::env::var_os(OVERLAP_MARKER).map(PathBuf::from)
+                {
+                    let _ = fs::write(
+                        overlap_marker,
+                        format!("critical section overlap: {error}\n"),
+                    );
                 }
+                return Err(error).context("entering lock-protected critical directory");
             }
             fs::write(&acquired, b"acquired")?;
             thread::sleep(Duration::from_millis(hold_ms));
