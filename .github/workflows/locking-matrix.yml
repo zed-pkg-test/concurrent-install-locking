@@ -1,0 +1,81 @@
+name: Cross-platform locking matrix
+
+on:
+  pull_request:
+    paths:
+      - Cargo.toml
+      - src/**
+      - tests/**
+      - TEST_PLAN.md
+      - test-plan.yaml
+      - .github/workflows/locking-matrix.yml
+  push:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - src/**
+      - tests/**
+      - TEST_PLAN.md
+      - test-plan.yaml
+      - .github/workflows/locking-matrix.yml
+  schedule:
+    - cron: '43 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: locking-matrix-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+
+jobs:
+  conformance:
+    name: ${{ matrix.os }} locking conformance
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - name: Check out independent test harness
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt,clippy
+
+      - name: Resolve production zed-lock from zed-pkg/zed-cli main
+        run: cargo metadata --format-version 1 --no-deps
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Run thread, event, ordering, cancellation, and process tests
+        run: cargo test --all-targets -- --nocapture
+
+      - name: Deny warnings
+        run: cargo clippy --all-targets -- -D warnings
+
+  scheduled-soak:
+    name: Ubuntu contention soak
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ZED_LOCK_E2E_STRESS: '1'
+    steps:
+      - name: Check out independent test harness
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run release-mode lock soak
+        run: cargo test --release --all-targets -- --nocapture
