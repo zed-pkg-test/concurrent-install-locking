@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex, mpsc};
 use std::thread;
@@ -83,11 +83,7 @@ fn sharded_thread_contention_preserves_every_protected_counter() -> Result<()> {
     let shard_count = if stress { 12 } else { 6 };
 
     let temp = tempfile::tempdir()?;
-    let manager = Arc::new(
-        LockManager::builder()
-            .max_waiters(thread_count * 2)
-            .build(),
-    );
+    let manager = Arc::new(LockManager::builder().max_waiters(thread_count * 2).build());
     let barrier = Arc::new(Barrier::new(thread_count + 1));
     let expected = Arc::new(
         (0..shard_count)
@@ -116,9 +112,7 @@ fn sharded_thread_contention_preserves_every_protected_counter() -> Result<()> {
                     &lock_path,
                     format!("worker {worker_id} shard {shard}"),
                 ))?;
-                let current = fs::read_to_string(&counter_path)?
-                    .trim()
-                    .parse::<usize>()?;
+                let current = fs::read_to_string(&counter_path)?.trim().parse::<usize>()?;
                 thread::yield_now();
                 fs::write(&counter_path, (current + 1).to_string())?;
                 drop(guard);
@@ -248,7 +242,10 @@ fn cancelled_waiter_drops_any_late_guard_before_another_owner_enters() -> Result
             _ => {}
         }
     }
-    assert!(saw_cancelled, "dropping the waiter emitted no cancellation event");
+    assert!(
+        saw_cancelled,
+        "dropping the waiter emitted no cancellation event"
+    );
     assert!(
         saw_late_acquire && saw_late_release,
         "a detached native request did not immediately release its eventual guard"
@@ -342,6 +339,3 @@ fn symlink_aliases_share_one_lock_domain() -> Result<()> {
     drop(guard);
     Ok(())
 }
-
-#[allow(dead_code)]
-fn _assert_send_sync_path(_: &Path) {}
