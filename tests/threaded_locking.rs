@@ -73,7 +73,7 @@ fn cold_key_progresses_while_many_threads_wait_on_one_hot_key() -> Result<()> {
             match hot_waiters[index].wait_timeout(SHORT_WAIT)? {
                 Some(guard) => {
                     drop(guard);
-                    hot_waiters.swap_remove(index);
+                    drop(hot_waiters.swap_remove(index));
                     made_progress = true;
                 }
                 None => index += 1,
