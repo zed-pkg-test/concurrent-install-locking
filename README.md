@@ -1,48 +1,76 @@
 # concurrent-install-locking
 
-    Independent **chaos/fault injection** harness in `zed-pkg-test` for `zed-pkg`.
+Independent **chaos/fault-injection and cross-platform locking** harness in `zed-pkg-test` for `zed-pkg`.
 
-    **Readiness:** `ready`  
-    **Primary dependency strategy:** `matrix`  
-    **Scheduled cadence:** `17 5 * * *` UTC  
-    **Live infrastructure:** multi-process runner
+**Readiness:** `ready`  
+**Primary dependency strategy:** `matrix`  
+**Scheduled live cadence:** `17 5 * * *` UTC  
+**Scheduled locking cadence:** `43 5 * * *` UTC  
+**Live infrastructure:** multi-process runner
 
-    ## Upstream repositories
+## Upstream repositories
 
-    - `zed-pkg/zed-cli`
+- `zed-pkg/zed-cli`
 - `zed-pkg/zed-interfaces`
 
-    ## Acceptance objectives
+The Rust acceptance harness resolves the production `zed-lock` package directly from the `zed-pkg/zed-cli` `main` branch. This keeps the test organization independent from the production repository while ensuring its daily matrix exercises the code users would currently receive.
 
-    1. Verify five concurrent installs, per-artifact locks, killed-owner recovery, and corruption resistance across the supported happy-path states and canonical fixtures.
-2. Verify five concurrent installs, per-artifact locks, killed-owner recovery, and corruption resistance under retries, interruption, concurrency, offline operation, or partial failure.
-3. Verify five concurrent installs, per-artifact locks, killed-owner recovery, and corruption resistance preserves authorization, idempotency, integrity, observability, and actionable failure classification.
+## Acceptance objectives
 
-    ## Dependency paths
+1. Verify concurrent installs, per-artifact locks, killed-owner recovery, and corruption resistance across supported happy-path states and canonical fixtures.
+2. Verify blocking kernel wake-up and evented completion under retries, timeout observation, cancellation, interruption, concurrency, and partial failure without converting acquisition into userspace polling.
+3. Verify independent lock identities retain concurrency while one hot identity has many blocked thread or process waiters.
+4. Verify canonical aliases, deterministic multi-lock ordering, bounded waiter resources, crash cleanup, and stable lock-file rendezvous semantics.
+5. Verify locking preserves idempotency, integrity, observability, actionable failure classification, and cross-platform behavior on Linux, macOS, and Windows.
 
-    This repository tests the upstream through independent installation paths:
+## Locking tests
 
-    1. `./scripts/bootstrap-upstream.sh git-submodule`
-    2. `./scripts/bootstrap-upstream.sh zed`
-    3. `./scripts/bootstrap-upstream.sh native-package`
+The cross-platform Rust suite covers:
 
-    The publisher materializes a real Git submodule when authenticated access is available. Zed and native package coordinates are recorded in `dependency-contract.yaml`; missing unpublished packages are reported as blocked readiness rather than silently skipped.
+- one cold lock completing while twelve waiter threads are blocked on another lock;
+- sharded thread contention with protected file counters;
+- repeated caller timeouts producing one native acquisition event rather than a retry loop;
+- cancellation followed by late native acquisition and immediate RAII release;
+- deterministic lock-class/path ordering and duplicate canonical identity rejection;
+- Unix symlink aliases sharing one lock domain;
+- six independent processes receiving exclusive handoffs without FIFO assumptions;
+- forced owner termination and successor acquisition while preserving the lock file;
+- unrelated process lock identities progressing concurrently; and
+- multi-process protected-counter tests, with larger thread and process counts in scheduled soak mode.
 
-    ## Check tiers
+```bash
+cargo test --all-targets -- --nocapture
+ZED_LOCK_E2E_STRESS=1 cargo test --release --all-targets -- --nocapture
+```
 
-    ```bash
-    python3 -m pip install -e '.[test]'
-    pytest -q
-    ./scripts/readiness.py --offline
-    ./scripts/run-live.sh
-    ```
+`.github/workflows/locking-matrix.yml` runs the normal suite on Ubuntu, macOS, and Windows for pull requests and main-branch changes. Scheduled and manually dispatched runs also execute the larger Ubuntu release-mode soak.
 
-    Pull requests validate the harness and deterministic contract fixtures. Secret-, service-, emulator-, desktop-, database-, provider-, chaos-, scale-, and soak-dependent checks run by schedule or manual dispatch.
+## Dependency paths
 
-    A live result must be classified as one of:
+This repository also tests the upstream through independent installation paths:
 
-    - **product regression** — a behavioral invariant fails after dependencies are ready;
-    - **blocked dependency** — an upstream, credential, package, emulator, provider sandbox, or deployment is unavailable;
-    - **harness regression** — generated metadata, fixtures, workflow, or runner setup is invalid.
+1. `./scripts/bootstrap-upstream.sh git-submodule`
+2. `./scripts/bootstrap-upstream.sh zed`
+3. `./scripts/bootstrap-upstream.sh native-package`
 
-    Managed by `github-test-org-factory/1.0.0`.
+The publisher materializes a real Git submodule when authenticated access is available. Zed and native package coordinates are recorded in `dependency-contract.yaml`; missing unpublished packages are reported as blocked readiness rather than silently skipped.
+
+## Check tiers
+
+```bash
+python3 -m pip install -e '.[test]'
+pytest -q
+./scripts/readiness.py --offline
+./scripts/run-live.sh
+cargo test --all-targets -- --nocapture
+```
+
+Pull requests validate the harness, deterministic contract fixtures, and the normal three-platform locking matrix. Secret-, service-, emulator-, desktop-, database-, provider-, chaos-, scale-, and extended-soak checks run by schedule or manual dispatch.
+
+A live result must be classified as one of:
+
+- **product regression** — a behavioral invariant fails after dependencies are ready;
+- **blocked dependency** — an upstream, credential, package, emulator, provider sandbox, or deployment is unavailable;
+- **harness regression** — generated metadata, fixtures, workflow, or runner setup is invalid.
+
+Managed by `github-test-org-factory/1.0.0` with repository-specific locking coverage layered on top.

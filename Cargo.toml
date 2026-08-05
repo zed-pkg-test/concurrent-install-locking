@@ -1,0 +1,12 @@
+[package]
+name = "zed-lock-e2e"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "Independent cross-platform locking acceptance tests for zed-pkg"
+
+[dev-dependencies]
+anyhow = "1"
+tempfile = "3"
+zed-lock = { git = "https://github.com/zed-pkg/zed-cli.git", branch = "main", package = "zed-lock" }
