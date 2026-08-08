@@ -1,40 +1,48 @@
 # Checkout-local mutation ownership release canary
 
 This repository provides an independent locking-focused release gate for the
-remaining DEN-2038 product candidate. It imports the exact black-box harness from
-`zed-pkg-test/zed-pkg-e2e` and executes it against a semantically current-main-
-integrated `zed-pkg/zed-cli` commit.
+complete remaining DEN-2038 product candidate. It imports the exact black-box
+harness from `zed-pkg-test/zed-pkg-e2e` and executes it against a
+current-main-integrated `zed-pkg/zed-cli` commit.
 
 ## Immutable source graph
 
 ```text
-zed-cli        1c74efd0bc137ef9905428a85aabe1fb1a0d2d05
-zed-pkg-e2e    5577b311308523f79be0f99a986553934eac6514
+zed-cli        2b5897f6a5b5cf33fee7a5934a60d7aa3e70e0a0
+zed-pkg-e2e    4be9cfc93805ab7a6d9ac2e8e2ccefd1d6ee5f29
 zed-interfaces d1bf8ef7c88a75292cbe8d697bfd269f30d62e2b
 zed-lock       a0dc78d385bc3ab553d3027b427f5f1428239c9c
 ```
 
-The product commit is a true two-parent semantic merge. It preserves the full
-DEN-2038 checkout-lock/recovery implementation and current main's complete
-DEN-3018 publish-ignore diagnostics and documentation. The file sets are
-disjoint; neither history was selected wholesale.
+The product branch is zero commits behind the reviewed current `main`. Earlier
+integration used true merge commits to preserve both the complete DEN-2038
+checkout-lock/recovery changes and current main's independent GitOps and
+DEN-3018 publish-ignore work. The final feature delta remains limited to three
+product files.
+
+The exact E2E commit includes the primary DEN-2038 harness plus disjoint current-
+main test-org integrations. The six certification files are the only PR-visible
+feature delta.
 
 ## Product boundary
 
 All checkout-tree mutations use one canonical `.zed/operation.lock` identity.
 The reviewed product provides:
 
-- Git-submodule takeover ownership shared with install/add/remove/uninstall;
+- Git-submodule takeover ownership shared with ordinary lifecycle facades;
 - superproject discovery before nested takeover lock acquisition;
 - same-thread RAII reentrancy through shared `Rc<OwnedLock>` descriptor
   ownership;
 - a weak thread-local lookup that never extends lock lifetime;
 - a naturally `!Send + !Sync` public guard;
 - descriptor ownership that survives outer-before-inner guard drops;
-- ordinary transaction recovery serialized across different Zed homes; and
-- modular takeover recovery before any `.gitmodules` read or Git transport.
+- ordinary transaction recovery serialized across different Zed homes;
+- modular takeover recovery before any `.gitmodules` read or Git transport; and
+- one superproject guard spanning cooperative `install --git-submodules`, from
+  recovery and Git sync through dependency resolution, materialization, adapter
+  wiring, and final lock publication.
 
-## Fifteen process assertions
+## Eighteen process assertions
 
 The imported harness proves:
 
@@ -47,12 +55,15 @@ The imported harness proves:
 7. nested takeover owns the superproject lock;
 8. no nested lock identity is created;
 9. a root frozen install serializes behind nested takeover;
-10. different-home recovery blocks behind checkout ownership;
-11. destination and backup bytes remain exact while blocked;
-12. release restores exact bytes and removes staging;
-13. the recovered process completes frozen installation;
-14. modular takeover recovers before `git submodule sync`; and
-15. exact backup bytes are restored before verification, transport, or adoption.
+10. cooperative `install --git-submodules` owns the lock before Git sync;
+11. a different-home frozen install blocks through Git sync and installation;
+12. the waiter succeeds only after complete lockfile and child state publication;
+13. different-home recovery blocks behind checkout ownership;
+14. destination and backup bytes remain exact while blocked;
+15. release restores exact bytes and removes staging;
+16. the recovered process completes frozen installation;
+17. modular takeover recovers before `git submodule sync`; and
+18. exact backup bytes are restored before verification, transport, or adoption.
 
 ## Workflow policy
 
