@@ -2,27 +2,27 @@
 
 This repository provides an independent locking-focused release gate for the
 complete remaining DEN-2038 product candidate. It imports the exact black-box
-harness from `zed-pkg-test/zed-pkg-e2e` and executes it against a
-current-main-integrated `zed-pkg/zed-cli` commit.
+harness from `zed-pkg-test/zed-pkg-e2e` and executes it against the exact
+three-file `zed-pkg/zed-cli` candidate.
 
 ## Immutable source graph
 
 ```text
-zed-cli        2b5897f6a5b5cf33fee7a5934a60d7aa3e70e0a0
-zed-pkg-e2e    4be9cfc93805ab7a6d9ac2e8e2ccefd1d6ee5f29
+zed-cli        28c68124e87301f562a8d423410943cf2de61064
+zed-pkg-e2e    09fe56b65e77f9bcb6c07bab5717aa3bcd0a86c5
 zed-interfaces d1bf8ef7c88a75292cbe8d697bfd269f30d62e2b
 zed-lock       a0dc78d385bc3ab553d3027b427f5f1428239c9c
 ```
 
-The product branch is zero commits behind the reviewed current `main`. Earlier
-integration used true merge commits to preserve both the complete DEN-2038
-checkout-lock/recovery changes and current main's independent GitOps and
-DEN-3018 publish-ignore work. The final feature delta remains limited to three
-product files.
+The product branch was semantically composed with reviewed `main` through true
+merge commits, preserving independent GitOps and DEN-3018 publish-ignore work.
+The final feature delta is limited to `src/project_lock.rs`,
+`src/git_submodules/cli.rs`, and `src/main.rs`; temporary finalizer artifacts
+were removed before certification.
 
-The exact E2E commit includes the primary DEN-2038 harness plus disjoint current-
-main test-org integrations. The six certification files are the only PR-visible
-feature delta.
+The exact E2E commit includes the primary DEN-2038 harness and a static source
+ratchet requiring cooperative installation to call
+`managed_install::install(&project, ...)`, never the caller's nested `&cwd`.
 
 ## Product boundary
 
@@ -38,11 +38,11 @@ The reviewed product provides:
 - descriptor ownership that survives outer-before-inner guard drops;
 - ordinary transaction recovery serialized across different Zed homes;
 - modular takeover recovery before any `.gitmodules` read or Git transport; and
-- one superproject guard spanning cooperative `install --git-submodules`, from
-  recovery and Git sync through dependency resolution, materialization, adapter
-  wiring, and final lock publication.
+- one selected-superproject guard spanning nested cooperative
+  `install --git-submodules`, from recovery and Git sync through dependency
+  resolution, materialization, adapter wiring, and final lock publication.
 
-## Eighteen process assertions
+## Nineteen process assertions
 
 The imported harness proves:
 
@@ -53,26 +53,31 @@ The imported harness proves:
 5. owner-process termination releases the descriptor lock;
 6. pre-mutation termination preserves manifest bytes and leaves no staging;
 7. nested takeover owns the superproject lock;
-8. no nested lock identity is created;
+8. no nested takeover lock identity is created;
 9. a root frozen install serializes behind nested takeover;
-10. cooperative `install --git-submodules` owns the lock before Git sync;
-11. a different-home frozen install blocks through Git sync and installation;
-12. the waiter succeeds only after complete lockfile and child state publication;
-13. different-home recovery blocks behind checkout ownership;
-14. destination and backup bytes remain exact while blocked;
-15. release restores exact bytes and removes staging;
-16. the recovered process completes frozen installation;
-17. modular takeover recovers before `git submodule sync`; and
-18. exact backup bytes are restored before verification, transport, or adoption.
+10. cooperative install launched from `packages/client/src` owns the root lock
+    before Git sync;
+11. nested cooperative invocation creates no nested lock, manifest, lockfile, or
+    staging identity;
+12. a different-home root frozen install blocks through Git sync and the full
+    install/finalizer lifecycle;
+13. the waiter succeeds only after complete root lockfile and child state
+    publication;
+14. different-home recovery blocks behind checkout ownership;
+15. destination and backup bytes remain exact while blocked;
+16. release restores exact bytes and removes staging;
+17. the recovered process completes frozen installation;
+18. modular takeover recovers before `git submodule sync`; and
+19. exact backup bytes are restored before verification, transport, or adoption.
 
 ## Workflow policy
 
 The Ubuntu 24.04 and macOS 15 matrix uses only public, immutable sources and
 commit-pinned Actions. It has `contents: read`, does not persist checkout
-credentials, disables Python bytecode writes, keeps compilation caches in runner
-temporary storage, denies Clippy warnings on Linux, builds the exact release
-binary, rejects dirty source trees without cleanup/reset, and retains only
-bounded process evidence for 14 days.
+credentials, statically rejects cooperative `&cwd`, disables Python bytecode
+writes, keeps compilation caches in runner temporary storage, denies Clippy
+warnings on Linux, builds the exact release binary, rejects dirty source trees
+without cleanup/reset, and retains only bounded process evidence for 14 days.
 
 No user PAT, GitHub App secret, Linear token, Cloudflare token, R2 credential,
 public package registry, Docker daemon, or persistent namespace participates.
