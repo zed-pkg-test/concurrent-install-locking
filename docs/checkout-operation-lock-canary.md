@@ -8,7 +8,7 @@ three-file `zed-pkg/zed-cli` candidate.
 ## Immutable source graph
 
 ```text
-zed-cli        28c68124e87301f562a8d423410943cf2de61064
+zed-cli        591b40846da73f7540bd36add33645d11cd33ab0
 zed-pkg-e2e    09fe56b65e77f9bcb6c07bab5717aa3bcd0a86c5
 zed-interfaces d1bf8ef7c88a75292cbe8d697bfd269f30d62e2b
 zed-lock       a0dc78d385bc3ab553d3027b427f5f1428239c9c
@@ -18,7 +18,9 @@ The product branch was semantically composed with reviewed `main` through true
 merge commits, preserving independent GitOps and DEN-3018 publish-ignore work.
 The final feature delta is limited to `src/project_lock.rs`,
 `src/git_submodules/cli.rs`, and `src/main.rs`; temporary finalizer artifacts
-were removed before certification.
+were removed before certification. The last product commit adds only a rustdoc
+clarification that Git synchronization, installer finalization, and transaction
+recovery share the same authority root.
 
 The exact E2E commit includes the primary DEN-2038 harness and a static source
 ratchet requiring cooperative installation to call
