@@ -78,6 +78,21 @@ jobs:
           persist-credentials: false
           show-progress: false
 
+      - name: Install Python 3.11 harness runtime
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+
+      - name: Verify Python harness runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          python3 - <<'PY'
+          import tomllib
+          print(f'tomllib available from {tomllib.__file__}')
+          PY
+
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
