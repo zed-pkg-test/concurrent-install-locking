@@ -22,8 +22,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ZED_CLI_REF: 1c74efd0bc137ef9905428a85aabe1fb1a0d2d05
-  ZED_E2E_REF: 5577b311308523f79be0f99a986553934eac6514
+  ZED_CLI_REF: 2b5897f6a5b5cf33fee7a5934a60d7aa3e70e0a0
+  ZED_E2E_REF: 4be9cfc93805ab7a6d9ac2e8e2ccefd1d6ee5f29
   ZED_INTERFACES_REF: d1bf8ef7c88a75292cbe8d697bfd269f30d62e2b
   ZED_LOCK_REF: a0dc78d385bc3ab553d3027b427f5f1428239c9c
   CARGO_TERM_COLOR: always
@@ -34,7 +34,7 @@ jobs:
   certify:
     name: ${{ matrix.os }} checkout authority
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 55
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -95,6 +95,7 @@ jobs:
           for path in \
             scripts/git_submodule_overtake_lock.py \
             scripts/git_submodule_overtake_nested_lock.py \
+            scripts/git_submodule_install_operation_lock.py \
             scripts/project_recovery_operation_lock.py; do
             test -f "harness/$path"
           done
@@ -107,6 +108,7 @@ jobs:
             python3 -m py_compile \
               harness/scripts/git_submodule_overtake_lock.py \
               harness/scripts/git_submodule_overtake_nested_lock.py \
+              harness/scripts/git_submodule_install_operation_lock.py \
               harness/scripts/project_recovery_operation_lock.py
           git -C canary diff --check
           git -C harness diff --check
@@ -173,6 +175,25 @@ jobs:
           assert evidence['public_registry_mutation'] is False
           PY
 
+      - name: Certify cooperative Git-submodule installation ownership
+        shell: bash
+        env:
+          WORK_ROOT: ${{ runner.temp }}/zed-checkout-lock-install
+        run: |
+          set -euo pipefail
+          python3 harness/scripts/git_submodule_install_operation_lock.py \
+            --zed "$RUNNER_TEMP/zed-bin/zed" \
+            --work-root "$WORK_ROOT"
+          python3 - "$WORK_ROOT/evidence/install-evidence.json" <<'PY'
+          import json, pathlib, sys
+          evidence = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert evidence['schema'] == 'zed.git-submodule-install-operation-lock/v1'
+          assert len(evidence['checks']) == 3
+          assert evidence['observed_block_seconds'] >= 0.7
+          assert evidence['network_credentials'] is False
+          assert evidence['public_registry_mutation'] is False
+          PY
+
       - name: Certify different-home and pre-Git recovery ordering
         shell: bash
         env:
@@ -213,6 +234,7 @@ jobs:
           path: |
             ${{ runner.temp }}/zed-checkout-lock-root/evidence
             ${{ runner.temp }}/zed-checkout-lock-nested/evidence
+            ${{ runner.temp }}/zed-checkout-lock-install/evidence
             ${{ runner.temp }}/zed-checkout-lock-recovery/evidence
           if-no-files-found: warn
           retention-days: 14
