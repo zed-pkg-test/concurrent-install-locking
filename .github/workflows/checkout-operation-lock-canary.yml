@@ -1,0 +1,269 @@
+name: Checkout-local mutation ownership release canary
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/checkout-operation-lock-canary.yml'
+      - 'docs/checkout-operation-lock-canary.md'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/checkout-operation-lock-canary.yml'
+      - 'docs/checkout-operation-lock-canary.md'
+  schedule:
+    - cron: '23 6 * * 4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checkout-operation-lock-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  ZED_CLI_REF: 591b40846da73f7540bd36add33645d11cd33ab0
+  ZED_E2E_REF: 09fe56b65e77f9bcb6c07bab5717aa3bcd0a86c5
+  ZED_INTERFACES_REF: d1bf8ef7c88a75292cbe8d697bfd269f30d62e2b
+  ZED_LOCK_REF: a0dc78d385bc3ab553d3027b427f5f1428239c9c
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  certify:
+    name: ${{ matrix.os }} checkout authority
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+
+    steps:
+      - name: Require immutable source pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ZED_CLI_REF" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$ZED_E2E_REF" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$ZED_INTERFACES_REF" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$ZED_LOCK_REF" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Check out release canary
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: canary
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+
+      - name: Check out exact independent harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zed-pkg-test/zed-pkg-e2e
+          ref: ${{ env.ZED_E2E_REF }}
+          path: harness
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+
+      - name: Check out exact product candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zed-pkg/zed-cli
+          ref: ${{ env.ZED_CLI_REF }}
+          path: zed-cli
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+
+      - name: Install Python 3.11 harness runtime
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+
+      - name: Verify Python harness runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          python3 - <<'PY'
+          import tomllib
+          print(f'tomllib available from {tomllib.__file__}')
+          PY
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Verify exact source graph and authority root
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C harness rev-parse HEAD)" = "$ZED_E2E_REF"
+          test "$(git -C zed-cli rev-parse HEAD)" = "$ZED_CLI_REF"
+          grep -F "rev = \"$ZED_INTERFACES_REF\"" zed-cli/Cargo.toml
+          grep -F "rev = \"$ZED_LOCK_REF\"" zed-cli/Cargo.toml
+          for path in \
+            scripts/git_submodule_overtake_lock.py \
+            scripts/git_submodule_overtake_nested_lock.py \
+            scripts/git_submodule_install_operation_lock.py \
+            scripts/project_recovery_operation_lock.py; do
+            test -f "harness/$path"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path("zed-cli/src/main.rs").read_text(encoding="utf-8")
+          selected = """submodules::sync(&project)?;
+                          managed_install::install(
+                              &project,"""
+          nested = """submodules::sync(&project)?;
+                          managed_install::install(
+                              &cwd,"""
+          assert source.count(selected) == 1, "cooperative install must use the selected superproject"
+          assert nested not in source, "cooperative install regressed to the nested invocation cwd"
+          PY
+
+      - name: Validate source and focused contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPYCACHEPREFIX="$RUNNER_TEMP/python-cache" \
+            python3 -m py_compile \
+              harness/scripts/git_submodule_overtake_lock.py \
+              harness/scripts/git_submodule_overtake_nested_lock.py \
+              harness/scripts/git_submodule_install_operation_lock.py \
+              harness/scripts/project_recovery_operation_lock.py
+          git -C canary diff --check
+          git -C harness diff --check
+          git -C zed-cli diff --check
+          cargo fmt --all --check --manifest-path zed-cli/Cargo.toml
+          cargo test --locked --manifest-path zed-cli/Cargo.toml --lib project_lock
+          cargo test --locked --manifest-path zed-cli/Cargo.toml --lib git_submodules
+          cargo test --locked --manifest-path zed-cli/Cargo.toml --doc project_lock
+
+      - name: Run strict Clippy
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --manifest-path zed-cli/Cargo.toml \
+            --lib --bin zed -- -D warnings
+
+      - name: Build exact release executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --manifest-path zed-cli/Cargo.toml --bin zed
+          mkdir -p "$RUNNER_TEMP/zed-bin"
+          cp zed-cli/target/release/zed "$RUNNER_TEMP/zed-bin/zed"
+          chmod 0755 "$RUNNER_TEMP/zed-bin/zed"
+          test "$("$RUNNER_TEMP/zed-bin/zed" --version)" = 'zed 0.1.0'
+
+      - name: Certify takeover, termination, and alias serialization
+        shell: bash
+        env:
+          WORK_ROOT: ${{ runner.temp }}/zed-checkout-lock-root
+        run: |
+          set -euo pipefail
+          python3 harness/scripts/git_submodule_overtake_lock.py \
+            --zed "$RUNNER_TEMP/zed-bin/zed" \
+            --work-root "$WORK_ROOT"
+          python3 - "$WORK_ROOT/evidence/evidence.json" <<'PY'
+          import json, pathlib, sys
+          evidence = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert evidence['schema'] == 'zed.git-submodule-overtake-operation-lock/v1'
+          assert len(evidence['checks']) == 6
+          assert evidence['normal_completion']['observed_block_seconds'] >= 0.7
+          assert evidence['owner_termination']['observed_block_seconds'] >= 0.7
+          assert evidence['network_credentials'] is False
+          assert evidence['public_registry_mutation'] is False
+          PY
+
+      - name: Certify nested superproject ownership
+        shell: bash
+        env:
+          WORK_ROOT: ${{ runner.temp }}/zed-checkout-lock-nested
+        run: |
+          set -euo pipefail
+          python3 harness/scripts/git_submodule_overtake_nested_lock.py \
+            --zed "$RUNNER_TEMP/zed-bin/zed" \
+            --work-root "$WORK_ROOT"
+          python3 - "$WORK_ROOT/evidence/nested-evidence.json" <<'PY'
+          import json, pathlib, sys
+          evidence = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert evidence['schema'] == 'zed.git-submodule-nested-overtake-lock/v1'
+          assert len(evidence['checks']) == 3
+          assert evidence['observed_block_seconds'] >= 0.7
+          assert evidence['network_credentials'] is False
+          assert evidence['public_registry_mutation'] is False
+          PY
+
+      - name: Certify nested cooperative installation ownership
+        shell: bash
+        env:
+          WORK_ROOT: ${{ runner.temp }}/zed-checkout-lock-install
+        run: |
+          set -euo pipefail
+          python3 harness/scripts/git_submodule_install_operation_lock.py \
+            --zed "$RUNNER_TEMP/zed-bin/zed" \
+            --work-root "$WORK_ROOT"
+          python3 - "$WORK_ROOT/evidence/install-evidence.json" <<'PY'
+          import json, pathlib, sys
+          evidence = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert evidence['schema'] == 'zed.git-submodule-install-operation-lock/v1'
+          assert len(evidence['checks']) == 4
+          assert evidence['observed_block_seconds'] >= 0.7
+          assert evidence['network_credentials'] is False
+          assert evidence['public_registry_mutation'] is False
+          PY
+
+      - name: Certify different-home and pre-Git recovery ordering
+        shell: bash
+        env:
+          WORK_ROOT: ${{ runner.temp }}/zed-checkout-lock-recovery
+        run: |
+          set -euo pipefail
+          python3 harness/scripts/project_recovery_operation_lock.py \
+            --zed "$RUNNER_TEMP/zed-bin/zed" \
+            --work-root "$WORK_ROOT"
+          python3 - "$WORK_ROOT/evidence/recovery-evidence.json" <<'PY'
+          import json, pathlib, sys
+          evidence = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert evidence['schema'] == 'zed.project-recovery-operation-lock/v1'
+          assert len(evidence['checks']) == 6
+          assert evidence['different_home_waiter']['observed_block_seconds'] >= 0.7
+          assert evidence['network_credentials'] is False
+          assert evidence['public_registry_mutation'] is False
+          PY
+
+      - name: Prove every source checkout remained clean
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for repository in canary harness zed-cli; do
+            status="$(git -C "$repository" status --porcelain=v1 --untracked-files=all)"
+            if [[ -n "$status" ]]; then
+              printf 'dirty %s checkout:\n%s\n' "$repository" "$status" >&2
+            fi
+            test -z "$status"
+          done
+
+      - name: Upload bounded checkout-lock evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checkout-operation-lock-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/zed-checkout-lock-root/evidence
+            ${{ runner.temp }}/zed-checkout-lock-nested/evidence
+            ${{ runner.temp }}/zed-checkout-lock-install/evidence
+            ${{ runner.temp }}/zed-checkout-lock-recovery/evidence
+          if-no-files-found: warn
+          retention-days: 14
+          include-hidden-files: false
