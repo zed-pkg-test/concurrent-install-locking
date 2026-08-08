@@ -22,8 +22,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ZED_CLI_REF: 2b5897f6a5b5cf33fee7a5934a60d7aa3e70e0a0
-  ZED_E2E_REF: 4be9cfc93805ab7a6d9ac2e8e2ccefd1d6ee5f29
+  ZED_CLI_REF: 28c68124e87301f562a8d423410943cf2de61064
+  ZED_E2E_REF: 09fe56b65e77f9bcb6c07bab5717aa3bcd0a86c5
   ZED_INTERFACES_REF: d1bf8ef7c88a75292cbe8d697bfd269f30d62e2b
   ZED_LOCK_REF: a0dc78d385bc3ab553d3027b427f5f1428239c9c
   CARGO_TERM_COLOR: always
@@ -84,7 +84,7 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
 
-      - name: Verify exact source graph
+      - name: Verify exact source graph and authority root
         shell: bash
         run: |
           set -euo pipefail
@@ -99,6 +99,19 @@ jobs:
             scripts/project_recovery_operation_lock.py; do
             test -f "harness/$path"
           done
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path("zed-cli/src/main.rs").read_text(encoding="utf-8")
+          selected = """submodules::sync(&project)?;
+                          managed_install::install(
+                              &project,"""
+          nested = """submodules::sync(&project)?;
+                          managed_install::install(
+                              &cwd,"""
+          assert source.count(selected) == 1, "cooperative install must use the selected superproject"
+          assert nested not in source, "cooperative install regressed to the nested invocation cwd"
+          PY
 
       - name: Validate source and focused contracts
         shell: bash
@@ -175,7 +188,7 @@ jobs:
           assert evidence['public_registry_mutation'] is False
           PY
 
-      - name: Certify cooperative Git-submodule installation ownership
+      - name: Certify nested cooperative installation ownership
         shell: bash
         env:
           WORK_ROOT: ${{ runner.temp }}/zed-checkout-lock-install
@@ -188,7 +201,7 @@ jobs:
           import json, pathlib, sys
           evidence = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
           assert evidence['schema'] == 'zed.git-submodule-install-operation-lock/v1'
-          assert len(evidence['checks']) == 3
+          assert len(evidence['checks']) == 4
           assert evidence['observed_block_seconds'] >= 0.7
           assert evidence['network_credentials'] is False
           assert evidence['public_registry_mutation'] is False
