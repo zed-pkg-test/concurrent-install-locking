@@ -226,6 +226,71 @@ fn repeated_timeouts_observe_one_native_wait_request() -> Result<()> {
 }
 
 #[test]
+fn deadline_timeout_has_one_reason_and_releases_a_late_native_grant() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let (event_sender, event_receiver) = mpsc::channel::<(LockEventKind, String)>();
+    let manager = LockManager::builder()
+        .max_waiters(4)
+        .event_sink(move |event| {
+            let _ = event_sender.send((event.kind, event.operation.clone()));
+        })
+        .build();
+    let path = temp.path().join("deadline.lock");
+    let owner = manager.acquire_blocking(queued_request(&path, "deadline owner"))?;
+
+    let error = match manager.acquire_timeout(queued_request(&path, "deadline waiter"), SHORT_WAIT)
+    {
+        Ok(guard) => {
+            drop(guard);
+            return Err(anyhow!("the contended acquisition unexpectedly succeeded"));
+        }
+        Err(error) => error,
+    };
+    assert!(
+        error.to_string().contains("timed out"),
+        "unexpected timeout error: {error:#}"
+    );
+
+    drop(owner);
+    let deadline = Instant::now() + DEADLINE;
+    let mut timed_out = 0;
+    let mut cancelled = 0;
+    let mut acquired = 0;
+    let mut released = 0;
+    while Instant::now() < deadline && (timed_out, acquired, released) != (1, 1, 1) {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let (kind, operation) = event_receiver
+            .recv_timeout(remaining)
+            .context("timed out waiting for deadline-waiter lifecycle events")?;
+        if operation != "deadline waiter" {
+            continue;
+        }
+        match kind {
+            LockEventKind::TimedOut => timed_out += 1,
+            LockEventKind::Cancelled => cancelled += 1,
+            LockEventKind::Acquired => acquired += 1,
+            LockEventKind::Released => released += 1,
+            _ => {}
+        }
+    }
+
+    assert_eq!(timed_out, 1, "deadline must emit exactly one timeout");
+    assert_eq!(cancelled, 0, "deadline must not also emit cancellation");
+    assert_eq!(acquired, 1, "detached native waiter never acquired");
+    assert_eq!(released, 1, "detached native grant was not released");
+    assert!(
+        wait_until(|| manager.active_waiters() == 0, DEADLINE),
+        "deadline waiter permit was not returned"
+    );
+
+    let successor = manager
+        .try_acquire(queued_request(&path, "deadline successor"))?
+        .context("late detached grant retained ownership")?;
+    drop(successor);
+    Ok(())
+}
+
+#[test]
 fn cancelled_waiter_drops_any_late_guard_before_another_owner_enters() -> Result<()> {
     let temp = tempfile::tempdir()?;
     let (event_sender, event_receiver) = mpsc::channel::<(LockEventKind, String)>();
