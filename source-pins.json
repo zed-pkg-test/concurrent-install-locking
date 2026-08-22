@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "zed-pkg/zed-lock": {
+      "branch": "main",
+      "sha": "6ddc734e786b54848621fe60017cc2ea47d4165d",
+      "formal_model": "waiter-ownership-lifecycle-v1"
+    }
+  }
+}

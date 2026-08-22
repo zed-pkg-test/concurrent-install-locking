@@ -14,7 +14,7 @@ Independent **chaos/fault-injection and cross-platform locking** harness in `zed
 - `zed-pkg/zed-cli`
 - `zed-pkg/zed-interfaces`
 
-The Rust acceptance harness resolves the production `zed-lock` package directly from the standalone `zed-pkg/zed-lock` repository at immutable commit `0fc100afc3cd60b5ce091b4207f910bf08f2cfb7`. This keeps the test organization independent from both the production CLI workspace and mutable branches while certifying the exact standalone source.
+The Rust acceptance harness resolves the production `zed-lock` package directly from the standalone `zed-pkg/zed-lock` repository at immutable commit `6ddc734e786b54848621fe60017cc2ea47d4165d`. This is the merge of the DEN-3854 formal waiter/ownership lifecycle and keeps the test organization independent from both the production CLI workspace and mutable branches while certifying the exact standalone source.
 
 ## Acceptance objectives
 
@@ -31,6 +31,8 @@ The cross-platform Rust suite covers:
 - one cold lock completing while twelve waiter threads are blocked on another lock;
 - sharded thread contention with protected file counters;
 - repeated caller timeouts producing one native acquisition event rather than a retry loop;
+- deadline timeout producing exactly one terminal reason while a later native
+  grant is immediately released;
 - cancellation followed by late native acquisition and immediate RAII release;
 - deterministic lock-class/path ordering and duplicate canonical identity rejection;
 - Unix symlink aliases sharing one lock domain;
