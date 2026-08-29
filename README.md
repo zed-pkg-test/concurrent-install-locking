@@ -68,6 +68,13 @@ pytest -q
 cargo test --all-targets -- --nocapture
 ```
 
+With no extra configuration, `run-live.sh` executes the release-mode
+multi-process crash-recovery case: it kills the current lock owner and requires
+a successor to acquire the same stable rendezvous file. Set
+`CHAOS_TEST_COMMAND` only for an additional network-fault command; that explicit
+mode starts the Toxiproxy service from `docker-compose.chaos.yml` and requires
+Docker. The built-in scheduled crash test does not start an unused proxy.
+
 Pull requests validate the harness, deterministic contract fixtures, and the normal three-platform locking matrix. Secret-, service-, emulator-, desktop-, database-, provider-, chaos-, scale-, and extended-soak checks run by schedule or manual dispatch.
 
 A live result must be classified as one of:
