@@ -53,7 +53,9 @@ fn run_round(round: usize) -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(&home)?;
     fs::write(&sentinel, b"preserve-me")?;
     if zpkg_root.exists() || locks_root.exists() || lock_path.exists() {
-        return Err(failure("clean-home precondition unexpectedly contained .zpkg lock state"));
+        return Err(failure(
+            "clean-home precondition unexpectedly contained .zpkg lock state",
+        ));
     }
 
     let mut children = Vec::new();
@@ -101,7 +103,9 @@ fn run_round(round: usize) -> Result<(), Box<dyn Error>> {
         return Err(failure("winner released but lock still exists"));
     }
     if !zpkg_root.is_dir() || !locks_root.is_dir() {
-        return Err(failure("local lock release removed caller-owned .zpkg parent directories"));
+        return Err(failure(
+            "local lock release removed caller-owned .zpkg parent directories",
+        ));
     }
     if fs::read(&sentinel)? != b"preserve-me" {
         return Err(failure("local lock activity modified unrelated HOME state"));
