@@ -1,0 +1,8 @@
+[package]
+name = "ores-local-lock-cross-runtime-rust"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+ores-locks-and-leases = { path = "../../../../upstream/ores-locks-and-leases/src/rust", default-features = false }
