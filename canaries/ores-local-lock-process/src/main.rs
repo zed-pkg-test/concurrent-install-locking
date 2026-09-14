@@ -38,10 +38,23 @@ fn run_round(round: usize) -> Result<(), Box<dyn Error>> {
         "ores-local-lock-process-canary-{}-{nonce}-{round}",
         std::process::id()
     ));
-    fs::create_dir_all(&root)?;
-    let lock_path = root.join("install.lock");
+    let home = root.join("home");
+    let zpkg_root = home.join(".zpkg");
+    let locks_root = zpkg_root.join("locks");
+    let lock_path = locks_root.join("install.lock");
     let barrier = root.join("start");
+    let sentinel = home.join("caller-owned.txt");
     let executable = env::current_exe()?;
+
+    // Model a clean user profile: the consumer owns HOME, while the shared
+    // local-lock backend is responsible for bootstrapping the .zpkg/locks
+    // parents needed by the rendezvous. Unrelated caller-owned state must live
+    // through contention and release unchanged.
+    fs::create_dir_all(&home)?;
+    fs::write(&sentinel, b"preserve-me")?;
+    if zpkg_root.exists() || locks_root.exists() || lock_path.exists() {
+        return Err(failure("clean-home precondition unexpectedly contained .zpkg lock state"));
+    }
 
     let mut children = Vec::new();
     for index in 0..12 {
@@ -87,9 +100,15 @@ fn run_round(round: usize) -> Result<(), Box<dyn Error>> {
     if local_file_lock_exists(&lock_path)? {
         return Err(failure("winner released but lock still exists"));
     }
+    if !zpkg_root.is_dir() || !locks_root.is_dir() {
+        return Err(failure("local lock release removed caller-owned .zpkg parent directories"));
+    }
+    if fs::read(&sentinel)? != b"preserve-me" {
+        return Err(failure("local lock activity modified unrelated HOME state"));
+    }
 
     fs::remove_file(&barrier)?;
-    fs::remove_dir(&root)?;
+    fs::remove_dir_all(&root)?;
     Ok(())
 }
 
@@ -105,6 +124,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     for round in 0..5 {
         run_round(round)?;
     }
-    println!("5 rounds passed: exactly one winner per 12-process contention wave");
+    println!(
+        "5 rounds passed: exactly one winner per 12-process $HOME/.zpkg-style contention wave"
+    );
     Ok(())
 }
