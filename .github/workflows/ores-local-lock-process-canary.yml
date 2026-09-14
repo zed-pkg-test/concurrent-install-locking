@@ -1,0 +1,66 @@
+name: ORES local-lock process canary
+
+on:
+  pull_request:
+    paths:
+      - "canaries/ores-local-lock-process/**"
+      - ".github/workflows/ores-local-lock-process-canary.yml"
+  push:
+    branches: [main]
+    paths:
+      - "canaries/ores-local-lock-process/**"
+      - ".github/workflows/ores-local-lock-process-canary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ores-local-lock-process-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  ORES_LOCKS_SHA: 3577aa974c4f516294c7d921fa4c8bf0368b855b
+
+jobs:
+  one-winner:
+    name: ${{ matrix.os }} / 5 x 12-process waves
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Check out independent zed-pkg test harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          show-progress: false
+
+      - name: Check out exact ORES local-lock source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ORESoftware/ores-locks-and-leases
+          ref: ${{ env.ORES_LOCKS_SHA }}
+          path: upstream/ores-locks-and-leases
+          persist-credentials: false
+          show-progress: false
+
+      - name: Install pinned Rust
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.85.1"
+          components: rustfmt,clippy
+
+      - name: Generate ephemeral external-consumer lockfile
+        run: cargo generate-lockfile --manifest-path canaries/ores-local-lock-process/Cargo.toml
+
+      - name: Check external consumer formatting
+        run: cargo fmt --manifest-path canaries/ores-local-lock-process/Cargo.toml -- --check
+
+      - name: Deny warnings in external consumer
+        run: cargo clippy --locked --manifest-path canaries/ores-local-lock-process/Cargo.toml -- -D warnings
+
+      - name: Run five independent process-contention waves
+        run: cargo run --locked --manifest-path canaries/ores-local-lock-process/Cargo.toml
