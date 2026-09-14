@@ -20,11 +20,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ORES_LOCKS_SHA: 3577aa974c4f516294c7d921fa4c8bf0368b855b
+  ORES_LOCKS_SHA: ab5e09ba509aeefa35cd14f2d391eca1003a09c0
 
 jobs:
   one-winner:
-    name: ${{ matrix.os }} / 5 x 12-process waves
+    name: ${{ matrix.os }} / 5 x 12-process $HOME/.zpkg waves
     strategy:
       fail-fast: false
       matrix:
@@ -62,5 +62,5 @@ jobs:
       - name: Deny warnings in external consumer
         run: cargo clippy --locked --manifest-path canaries/ores-local-lock-process/Cargo.toml -- -D warnings
 
-      - name: Run five independent process-contention waves
+      - name: Run five independent $HOME/.zpkg-style process-contention waves
         run: cargo run --locked --manifest-path canaries/ores-local-lock-process/Cargo.toml
